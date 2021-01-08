@@ -1,0 +1,1167 @@
+---
+title: "Choose My Own Project: Predict Sale Price - NYC Properties"
+author: "Virginia Carneiro"
+date: "January 6th, 2021"
+output:
+ pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+header-includes:
+  - \usepackage{float}
+  - \usepackage{booktabs}
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+\pagebreak
+# Introductory
+## Overview
+
+  This project will focus to develop a machine learning algorithm to predict the *Sale Price* in a NYC property using the tools learning during the 8 courses included in the *Data Science Professional Certificate*, some recommendations I got from my MovieLens Capstone and, also others resources I will including in the Resource section.
+
+  I choose this dataset because it will be my starting point in my real state business. 
+
+  I downloaded the dataset from Kaggle as Harvard-Edx staff has recommended in this chapter.
+
+  The dataset will be storage in github and automatically download from my code.
+
+  After that, I will analyze the dataset verifying if all the features are necessary and useful. I will plot some of the features for better understanding.
+
+  Then, I'm going to split the dataset in 2 sections one for training and another one for validation.  Validation dataset will be a 10% of the original dataset and I will use it just in my final model.
+Train dataset will be split again in training and test.  Test dataset will take 10% of the dataset.  These datasets will be used to train and test my algorithms and I'll choose the algorithms that fit better according the RMSE metric.
+
+  I choose these percentages to split the dataset 80/10/10 because it a small dataset and I don't want to lose too much training data.
+
+  Finally, I will show you the different machine learning models with their respective RMSEs.
+
+  These models will be the starting point of my analysis, because I would like study in-depth the ensembling models.
+
+  Into the NYC Property Project will be three files:
+
+1. My report in PDF format.
+2. My report in RMD format.
+3. A script in R format that predict the sale price in a property in NYC and the RMSE score.
+
+  These files will be storage into the Edx platform and Github (<https://github.com/vircarneiro/NYC-Property-Sales>)
+
+# Download Dataset
+
+* The dataset has been downloaded from <https://www.kaggle.com/new-york-city/nyc-property-sales>
+* The dataset has been saved on <https://github.com/vircarneiro/NYC-Property-Sales/blob/main/nyc-rolling-sales.zip?raw=true>
+
+```{r include = FALSE}
+################################################################
+# Get NYC Property Data Set
+################################################################
+## Install and Loading libraries
+if(!require(gbm)) install.packages("gbm", repos = "http://cran.us.r-project.org")
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(ggplot2)) install.packages("ggplot2", repos = "http://cran.us.r-project.org")
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
+if(!require(randomForest)) install.packages("randomForest", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(data.table)
+library(caret)
+library(ggplot2)
+library(dplyr)
+library(corrplot)
+
+# Add an if condition to run easily my code.
+if (file.exists("NYCProperty")) {
+  ## Read NYYProperty dataset
+  NYCProperty <- readRDS(file="NYCProperty")
+} else {
+  ## Download NYC Property Data Set
+  dl <- tempfile()
+  download.file("https://github.com/vircarneiro/NYC-Property-Sales/blob/main/nyc-rolling-sales.zip?raw=true", dl)
+  
+  NYCProperty <- fread(text = gsub("::", ",", readLines(unzip(dl, "nyc-rolling-sales.csv"))),
+                   col.names = c("Index","Borough","Neighborhood", "BuildingClassCategory", "TaxClassPresent", "Block", "Lot", "EASE-MENT", "BuildingClassCategoryPresent", "Address", "Apartment","ZipCode","ResidentionUnit", "CommercialUnit", "TotalUnit", "LandFeet","GrossFeet", "YearBuilt", "TaxClassSale", "BuildingClassSale", "SalePrice", "SaleDate"))
+  
+  ## Delete objects from the memory
+  rm(dl)
+  
+  ## Save NYYProperty dataset
+  saveRDS(NYCProperty, file="NYCProperty")
+}
+
+```
+# Description Dataset and Features
+## Dataset Description
+  The dataset includes all the building or building unit sold in New York City over 12-months period between 2016 and 2017.
+These properties are located in Manhattan, Bronx, Brooklyn, Queens, and Staten Island.
+
+  The combination of borough, block, and lot forms a unique key for property in New York City.
+
+  Many sales occur with a nonsensically small dollar amount. These sales are actually transfers of deeds between parties. For my analysis, I will remove these cases.
+
+  This dataset uses the financial definition of a building/building unit, for tax purposes. In case a single entity owns the building in question, a sale covers the value of the entire building. In case a building is owned piecemeal by its residents (a condominium), a sale refers to a single apartment (or group of apartments) owned by some individual.
+
+## NYC Property - Structure
+```{r, echo=TRUE}
+str(NYCProperty, strict.width = "wrap")
+```
+## NYC Property - Features Description
+* Borough: a digit code for the borough the property is located in:
+    - Manhattan (1), 
+    - Bronx (2), 
+    - Brooklyn (3), 
+    - Queens (4) and, 
+    - Staten Island (5).
+* Neighborhood: Department of Finance assessors determine the neighborhood name in the course of valuing
+properties.
+* Building Class Category: identify similar properties by broad usage  (e.g. One Family Homes) 
+* Tax Class: every property in the city is assigned to one of four tax classes:
+    - Class 1: includes most residential property of up to three units (such as one-, two-, and three-family homes and small stores or offices with one or two attached apartments),
+    - Class 2: includes all other property that is primarily residential, such as cooperatives and condominiums.
+    - Class 3: includes property with equipment owned by a gas, telephone or electric company.
+    - Class 4: includes all other properties not included in class 1,2, and 3, such as offices, factories, warehouses, garage buildings, etc.
+* Block: is a sub-division of the borough on which real properties are located.
+* Lot: is a subdivision of a Block and represents the property unique location.
+* Easement: is a right, such as a right of way, which allows an entity to make limited use of
+another’s real property.
+* Building Classification at Present: is used to describe a property’s constructive use. 
+    - 1st position, describe a general class of properties (for example “A” signifies one-family homes)
+    - 2nd position, , adds more specific information about the property’s use or construction style (using our previous examples “A0” is a Cape Cod style one family home). 
+There is more detail about Building Classification in the reference section.
+* Address: the street address of the property as listed on the Sales File.
+* Zip Code: the property’s postal code.
+* Residential Units: number of residential units at the listed property.
+* Commercial Units: number of commercial units at the listed property.
+* Total Units: total number of units at the listed property.
+* Land Square Feet: land area of the property listed in square feet.
+* Gross Square Feet: total area of all the floors of a building as measured from the exterior surfaces of the outside walls of the building, including the land area and space within any building or structure on the property. 
+* Year Built: Year the structure on the property was built. 
+* Building Class at Time of Sale: is used to describe a property’s constructive use at the time of the saling.
+* Sales Price: price paid for the property. A USD 0 sale indicates that there was a transfer of ownership without a cash consideration. It can be for example a transfer of ownership from parents to children. 
+* Sale Date: date the property sold.
+
+# Data Validation and Cleaning - NYCProperty dataset   
+
+## Overview Validation
+
+  Verify duplicated observations 
+```{r, echo=TRUE}
+NYCProperty <- unique(NYCProperty)
+```
+
+  Verify columns with all the values filled as NAs.
+```{r, echo=TRUE}
+colnames(NYCProperty)[colSums(is.na(NYCProperty)) > 0] 
+```
+
+  Erase column EASY_MENT. 
+```{r, echo=TRUE}
+NYCProperty <- NYCProperty[,-c("EASE-MENT")]
+```
+
+  Erase column Index.  Not useful for analysis.
+```{r, echo=TRUE}
+NYCProperty <- NYCProperty[,-c("Index")]
+```
+
+## Features
+### SalePrice (target feature)
+  The feature to predict has values not acceptable such us "-". I'm going to delete them.
+```{r, echo=FALSE}
+SalePrice <- NYCProperty %>% 
+  select(SalePrice) %>%
+  distinct()
+SalePrice
+```
+
+```{r, echo= FALSE}
+NYCProperty <-NYCProperty[!(NYCProperty$SalePrice == "-"),]
+```
+
+The SalePrice should be a numeric feature not a chr.
+```{r, echo= FALSE}
+NYCProperty$SalePrice <- as.numeric(NYCProperty$SalePrice)
+```
+
+  I'm going to filter all properties with a sale price <= USD 100.000.  Properties below this price are not valid for my analysis.
+```{r, echo= FALSE}
+NYCProperty <-NYCProperty[!(NYCProperty$SalePrice <= 100000),]
+```
+
+  Plotting the outliers
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+ggplot(NYCProperty, aes(x= "", y= SalePrice)) + 
+  geom_boxplot(color= 'dark blue', fill = 'light blue')+
+  coord_flip() +
+  labs(title = "Properties Sale Price - Outlier",
+         y = "Sale Price") +
+  scale_y_log10() +
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+
+  The boxplot shows us the outliers values when the SalePrice is > USD 200.000.000 aprox.. Then I'm going to remove these values.
+```{r, echo= FALSE}
+SalePrice <- NYCProperty %>% select(SalePrice, Borough, Block, Lot)%>%
+  filter(SalePrice <= 200000000)%>%
+  group_by(SalePrice) %>%
+  count(SalePrice) %>%
+  arrange((SalePrice))
+```
+
+```{r, echo= FALSE}
+# Delete rows with Sale Price < USD 200.000.000 to remove outliers.
+NYCProperty <- NYCProperty[(NYCProperty$SalePrice < 200000000),  ]
+```
+ 
+  We can see the distribution becomes skewed to the left with a long tail on the right.
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+ggplot(SalePrice, aes(x=SalePrice, y= n)) + 
+  geom_point(color= 'light blue')+
+  labs(title = "Properties with Sale Price Between $100K and $200MM",
+       x = "Sale Price",
+       y = "Quantity of Properties")+
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+
+  To reduce the skew I'm going to apply the logarithm. 
+```{r, echo= FALSE}
+NYCProperty$SalePrice <- log10(NYCProperty$SalePrice)
+```
+
+  This is the plot after apply the logarithm.
+```{r, echo= FALSE}
+SalePrice <- NYCProperty %>% select(SalePrice, Borough, Block, Lot)%>%
+ group_by(SalePrice) %>%
+ count(SalePrice) %>%
+ arrange((SalePrice))
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+ggplot(SalePrice, aes(x=SalePrice, y= n)) + 
+ geom_point(color= 'light blue')+
+ labs(title = "Sale Price After Remove Skewer",
+      x = "Sale Price",
+      y = "Quantity of Properties")+
+ theme_bw() +
+ theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, vjust = 0.5),
+       axis.text.y = element_text(colour = "grey20", size = 8),
+       strip.text = element_text(face = "italic"),
+       text = element_text(size = 10))
+```
+
+### Borough
+  There are no incorrect values. 
+```{r, echo=FALSE, results="hide"}
+NYCProperty %>% select(Borough) %>%
+    distinct()
+```
+
+```{r, echo=FALSE}
+Borough <- NYCProperty %>% 
+  select(Borough, Block, Lot) %>% 
+  group_by(Borough) %>% 
+  summarize(Qty = n()) %>%
+  arrange((Borough))
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+Borough %>%
+  arrange(Qty) %>%    
+  mutate(Borough=factor(Borough, levels=Borough)) %>%
+ggplot(aes(x=Borough, y=Qty)) +
+  geom_segment( aes(xend=Borough, yend=0)) +
+  geom_point( size=5, color="light blue") +
+  labs(title = "NYC Properties by Borough",
+       x = "Borough",
+       y = "Qty of Property")+
+  coord_flip() +
+ theme_bw() +
+ theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, vjust = 0.5),
+       axis.text.y = element_text(colour = "grey20", size = 8),
+       strip.text = element_text(face = "italic"),
+       text = element_text(size = 10))
+```
+  In this plot we can see that most of the properties sold are in the area of Queens (4), Brooklyn (3) and, Manhattan (1). 
+
+### Neighborhood
+  There are no incorrect values. It has to be numeric and categorical.
+```{r, echo= FALSE}
+Neighborhood <- NYCProperty %>% 
+  select(Neighborhood) %>% 
+  count(Neighborhood) %>% 
+  distinct()
+# Label Encoding - 251 categories
+NYCProperty$Neighborhood = as.numeric(as.factor(NYCProperty$Neighborhood))
+```
+
+### BuildingClassCategory
+  There are no incorrect values. It has to be numeric and categorical.
+```{r, echo= FALSE}
+BuildingClassCategory <- NYCProperty %>% 
+  select(BuildingClassCategory) %>% 
+  count(BuildingClassCategory) %>% 
+  distinct()
+# Label Encoding - 45 Categories
+NYCProperty$BuildingClassCategory = as.numeric(as.factor(NYCProperty$BuildingClassCategory))
+```
+
+### TaxClassPresent
+  There are null values to remove. It has to be numeric and categorical.
+```{r, echo= FALSE}
+TaxClassPresent  <- NYCProperty %>% 
+  select(TaxClassPresent)%>% 
+  count(TaxClassPresent) %>% 
+  distinct()
+# Delete rows with TaxClassPresent null. These observation has null others important features(YearBuild, GrossFeet, etc) 
+NYCProperty <- NYCProperty[!(NYCProperty$TaxClassPresent == ""),  ]
+```
+
+```{r, echo= FALSE}
+TaxClassPresent <- NYCProperty %>% select(TaxClassPresent, Borough, Block, Lot)%>%
+  group_by(TaxClassPresent) %>% 
+  count(TaxClassPresent) %>%
+  arrange(n)
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+TaxClassPresent %>%
+  arrange(n) %>%
+ggplot(aes(x = reorder(TaxClassPresent, -n), y = n)) +
+  geom_bar(stat = "identity", color="light blue", fill= "light blue") +
+  labs(title = "NYC Properties Sold by Tax Class Present",
+       x = "Tax Class Present",
+       y = "Quantity of Properties") +
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, 
+                                   vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+
+```{r, echo= FALSE} 
+NYCProperty$TaxClassPresent = as.numeric(as.factor(NYCProperty$TaxClassPresent))
+```
+  In this plot we can see the majorities of the properties sold have a Tax Class 2 (cooperatives and condominiums) and 1 (residential properties). 
+
+### Block 
+  There are no incorrect values. 
+```{r, echo= FALSE}
+Block <- NYCProperty %>% 
+  select(Block ) %>% 
+  distinct()
+```
+
+### Lot
+  There are no incorrect values. 
+```{r, echo= FALSE}
+Lot <- NYCProperty %>% 
+  select(Lot) %>% 
+  distinct()
+```
+
+### BuildingClassCategoryPresent
+  It has to numeric and categorical.
+```{r, echo= FALSE}
+BuildingClassCategoryPresent <- NYCProperty %>% 
+  select(BuildingClassCategoryPresent)  %>% 
+  count(BuildingClassCategoryPresent) %>% 
+  distinct()
+# Label Encoding - 149 Classes
+NYCProperty$BuildingClassCategoryPresent = as.numeric(as.factor(NYCProperty$BuildingClassCategoryPresent))
+```
+
+### Address
+  This feature is not important for my analysis. It contains a lot of detail that does not add value to my analysis.
+
+  Before making the decision to delete it, I normalized it by giving all the observations the same format. It didn't add any value to my analysis and my models, just add a lot of code making confusion on it.
+```{r, echo= FALSE}
+NYCProperty <- NYCProperty[,-c("Address")]
+```
+
+### Apartment
+  This feature has most of values invalid and does not add value to my analysis. It will be deleted.
+```{r, echo= FALSE}
+Apartment  <- NYCProperty %>% 
+  select(Apartment) %>% 
+  count(Apartment) %>% 
+  distinct()
+# There are 43147 obs not valid
+sum((NYCProperty$Apartment == "")) 
+sum((NYCProperty$Apartment == "`")) 
+# Erase column Apartment most of the values are null
+NYCProperty <- NYCProperty[,-c("Apartment")]
+```
+
+### Zip Code
+  There are null values to remove. It has to be numeric.
+```{r, echo= FALSE}
+ZipCode  <- NYCProperty %>% 
+  select(ZipCode) %>% 
+  count(ZipCode) %>% 
+  distinct()
+# Erase the 219 zip codes with value 0. This is an important features to analyze
+sum((NYCProperty$ZipCode == 0)) 
+NYCProperty <-NYCProperty[!(NYCProperty$ZipCode == "0"),]
+```
+
+```{r, echo= FALSE}
+ZipCode <- NYCProperty %>% 
+  select(Borough, Block, Lot, ZipCode) %>% 
+  group_by(ZipCode) %>% 
+  count(ZipCode) %>%
+  arrange((ZipCode))
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 6.5, fig.height = 4, fig.align = "center"}
+ggplot(data = ZipCode, aes(x = reorder(ZipCode, -n),y = n)) +
+  geom_bar(stat = "identity", color="light blue", fill="light blue") +
+  labs(title = "NYC Properties Sold by Zip Code",
+       x = "Zip Code",
+       y = "Quantity of Properties") +
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 5, angle = 90, hjust = 0.5, vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+
+```{r, echo= FALSE}
+# Convert to numeric
+NYCProperty$ZipCode <- as.numeric(NYCProperty$ZipCode)
+```
+  The top 5 zip codes of sold properties are 11354 (Queens, NYC), 11201(Brooklyn, NYC), 11375 (Queens, NYC), 10011 (Manhattan, NYC), 10314 (Staten Island, NYC)
+
+### ResidentionUnit
+  It has a lot of null values, but I'm not going to remove them because it's related with TotalUnit.  I'm leave it as it for analysis.
+```{r, echo= FALSE}
+ResidentionUnit  <- NYCProperty %>% 
+  select(ResidentionUnit) %>% 
+  distinct()
+```
+
+### CommercialUnit
+  It has a lot of null values, but I'm not going to remove them because it's related with TotalUnit.  I'm leave it as it for analysis.
+```{r, echo= FALSE}
+CommercialUnit  <- NYCProperty %>% 
+  filter(CommercialUnit == 0) %>%
+  #select(CommercialUnit) %>% 
+  distinct()
+```
+
+### TotalUnit
+  This feature is composed by the sum of CommercialUnit + ResidentionUnit. There are highest correlated.
+  The observations that are null will be deleted.
+```{r, echo= FALSE}
+TotalUnit  <- NYCProperty %>% 
+  select(TotalUnit)%>% 
+  filter(TotalUnit == 0)%>% 
+  distinct()
+# Delete rows with TotalUnit null. 
+NYCProperty <-NYCProperty[!(NYCProperty$TotalUnit == "0"),]
+```
+
+### LandFeet
+  It has invalid values "0" and "-" to be removed.  It has to be a numeric feature.
+```{r, echo= FALSE}
+LandFeet  <- NYCProperty %>% 
+  select(LandFeet) %>% 
+  count(LandFeet)%>%
+  distinct()
+# Erase the 4227 rows with 0
+sum((NYCProperty$LandFeet == 0)) 
+NYCProperty <-NYCProperty[!(NYCProperty$LandFeet == "0"),]
+# Erase the 8773 rows with "-"
+sum((NYCProperty$LandFeet == "-")) 
+NYCProperty <-NYCProperty[!(NYCProperty$LandFeet == "-"),]
+# Convert to numeric
+NYCProperty$LandFeet <- as.numeric(NYCProperty$LandFeet)
+```
+
+  This is an important feature for my analysis, Here is a plot to show us the distribution
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+LandFeet  <- NYCProperty %>% 
+  select(LandFeet) %>% 
+  count(LandFeet)%>%
+  distinct()
+ggplot(data=LandFeet, aes(x=LandFeet,y=n)) +
+  geom_point(color= 'light blue')+
+ theme_bw() +
+ theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, vjust = 0.5),
+       axis.text.y = element_text(colour = "grey20", size = 8),
+       strip.text = element_text(face = "italic"),
+       text = element_text(size = 10))
+```
+
+  I'm going to apply the logarithm to reduce the skew.
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+NYCProperty$LandFeet <- log10(NYCProperty$LandFeet)
+
+LandFeet  <- NYCProperty %>% 
+  select(LandFeet) %>% 
+  count(LandFeet)%>%
+  distinct()
+ggplot(data=LandFeet, aes(x=LandFeet,y=n)) +
+  geom_point(color= 'light blue')+
+ theme_bw() +
+ theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, vjust = 0.5),
+       axis.text.y = element_text(colour = "grey20", size = 8),
+       strip.text = element_text(face = "italic"),
+       text = element_text(size = 10))
+```
+
+### GrossFeet
+  It has invalid values "0" and "-" to be removed.  It has to be a numeric feature.
+```{r, echo= FALSE}
+GrossFeet  <- NYCProperty %>% 
+  select(GrossFeet) %>% 
+  count(GrossFeet)%>%
+  distinct()
+# Erase the 50 rows with 0
+sum((NYCProperty$GrossFeet == 0)) 
+NYCProperty <-NYCProperty[!(NYCProperty$GrossFeet == "0"),]
+# Erase the 137 rows with "-"
+sum((NYCProperty$GrossFeet == "-")) 
+NYCProperty <-NYCProperty[!(NYCProperty$GrossFeet == "-"),]
+# Convert to numeric
+NYCProperty$GrossFeet <- as.numeric(NYCProperty$GrossFeet)
+```
+
+  This is an important feature for my analysis, Here is a plot to show us the distribution.
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+GrossFeet  <- NYCProperty %>% 
+  select(GrossFeet) %>% 
+  count(GrossFeet)%>%
+  distinct()
+ggplot(data=GrossFeet, aes(x=GrossFeet,y=n)) +
+  geom_point(color= 'light blue')+
+ theme_bw() +
+ theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, vjust = 0.5),
+       axis.text.y = element_text(colour = "grey20", size = 8),
+       strip.text = element_text(face = "italic"),
+       text = element_text(size = 10))
+```
+
+  I'm going to apply the logarithm to reduce the skew.
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+NYCProperty$GrossFeet <- log10(NYCProperty$GrossFeet)
+
+GrossFeet  <- NYCProperty %>% 
+  select(GrossFeet) %>% 
+  count(GrossFeet)%>%
+  distinct()
+ggplot(data=GrossFeet, aes(x=GrossFeet,y=n)) +
+  geom_point(color= 'light blue')+
+ theme_bw() +
+ theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, vjust = 0.5),
+       axis.text.y = element_text(colour = "grey20", size = 8),
+       strip.text = element_text(face = "italic"),
+       text = element_text(size = 10))
+```
+
+### YearBuilt
+  It has some invalid values and it has to be numeric.
+```{r, echo= FALSE}
+YearBuilt  <- NYCProperty %>% 
+  select(YearBuilt) %>% 
+  count(YearBuilt)%>%
+  distinct()
+# Erase the 8 rows with 0
+sum((NYCProperty$YearBuilt == 0)) 
+NYCProperty <-NYCProperty[!(NYCProperty$YearBuilt == "0"),]
+# Convert to numeric
+NYCProperty$YearBuilt <- as.numeric(NYCProperty$YearBuilt)
+```
+
+### TaxClassSale
+  It has to be numeric and categorical.
+```{r, echo= FALSE}
+TaxClassSale  <- NYCProperty %>% 
+  select(TaxClassSale) %>% 
+  count(TaxClassSale)%>%
+  distinct()
+### Label Encoding
+NYCProperty$TaxClassSale = as.numeric(as.factor(NYCProperty$TaxClassSale))
+```
+
+### BuldingClassSale
+  It has to be numeric and categorical.
+```{r, echo= FALSE}
+BuildingClassSale  <- NYCProperty %>% 
+  select(BuildingClassSale) %>% 
+  count(BuildingClassSale)%>%
+  distinct()
+### Label Encoding - 124
+NYCProperty$BuildingClassSale = as.numeric(as.factor(NYCProperty$BuildingClassSale))
+```
+
+### SaleDate
+  This features has to be set as date and I'm going to split it in 3 different features as YearSale, MonthSale and, DaySale and take off SaleDate.  These 3 new features will be numeric.
+```{r, echo= FALSE}
+### Format as date
+NYCProperty$SaleDate <- as.Date(NYCProperty$SaleDate, "%Y-%m-%d %H:%M:%S")
+### # Extract YearSale/MonthSale/DaySale from SaleDate
+NYCProperty <- NYCProperty %>% mutate(YearSale = as.numeric(format(NYCProperty$SaleDate, "%Y")))
+NYCProperty <- NYCProperty %>% mutate(MonthSale = as.numeric(format(NYCProperty$SaleDate, "%m")))
+NYCProperty <- NYCProperty %>% mutate(DaySale = as.numeric(format(NYCProperty$SaleDate, "%d")))
+### Remove SaleDate after
+NYCProperty <- NYCProperty[,-c("SaleDate")]
+```
+
+```{r, echo= FALSE}
+
+MonthSale <- NYCProperty %>% select(MonthSale, Borough, Block, Lot)%>%
+  group_by(MonthSale) %>% 
+  count(MonthSale) %>%
+  arrange(n)
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+MonthSale %>%
+  ggplot(aes(x = reorder(MonthSale, -n), y = n)) +
+  geom_bar(stat = "identity", color="light blue", fill= "light blue") +
+  labs(title = "NYC Properties Sold by Months",
+       x = "Months",
+       y = "Quantity of Properties Sold") +
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, 
+                                   vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+  This graph shows us that June, December, and September are the months when the majority of property sales occur in New York.
+  On the other hand,  August is the least amount of properties sales, therefore if I have to buy a property in NYC, August would be a starting point since there would not be as much demand for properties as in the rest of the months.
+
+```{r, echo=FALSE}
+# Drop duplicate observations
+count(unique(NYCProperty))
+NYCProperty <- unique(NYCProperty)
+```
+
+```{r, echo=FALSE}
+# Delete objects from the memory
+rm(Apartment, Block, BuildingClassCategory, BuildingClassCategoryPresent, BuildingClassSale, CommercialUnit,
+   GrossFeet, LandFeet, Lot, Neighborhood, ResidentionUnit, SalePrice, TaxClassPresent, TaxClassSale, TotalUnit,
+   YearBuilt, ZipCode, Borough, MonthSale)
+
+# Reorder Columns
+NYCProperty <- NYCProperty %>% select(Borough, Block, Lot, Neighborhood:TaxClassPresent, BuildingClassCategoryPresent:BuildingClassSale, YearSale:DaySale, SalePrice)
+```
+
+  Once I have the dataset clean, I'm going to take a dataset portion to validate my final model.  
+
+# Split the dataset - Create NYCProperties dataset, Validation dataset.
+  I'm going to take just 10% of the observations because the final dataset is small and I don't want to lose data to train my models. 
+  Then Validation dataset will be used just for my final model. 
+```{r, echo=FALSE}
+# Validation set will be 10% of NYCProperty data
+set.seed(1, sample.kind="Rounding") # if using R 3.5 or earlier, use `set.seed(1)`
+test_index <- createDataPartition(y = NYCProperty$SalePrice, times = 1, p = 0.1, list = FALSE)
+NYCProperties <- NYCProperty[-test_index,]
+temp <- NYCProperty[test_index,]
+
+# Make sure Borough, Block and Lot in validation set are also in NYC Properties data set.
+validation <- temp %>% 
+  semi_join(NYCProperties, by = "Borough") %>%
+  semi_join(NYCProperties, by = "Block") %>%
+  semi_join(NYCProperties, by = "Lot")
+
+# Add rows removed from validation set back into NYCProperties data set
+removed <- anti_join(temp, validation)
+NYCProperties <- rbind(NYCProperties, removed)
+
+## Delete objects from the memory
+rm(NYCProperty, removed, temp, test_index)
+```
+
+# Correlatives Features
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+Columms <- NYCProperties[,Borough:DaySale]
+Data <- cor(Columms, method = "spearman")
+corrplot(Data, tl.col = "black", order = "hclust", hclust.method = "average", addrect = 4, tl.cex = 0.7)
+```
+Here we can see: 
+
+* YearSale is highly uncorrelated with MonthYear.
+
+* BuildingClassCategoryPresent, BuildingClassSale, BuildingClassCategory and, ResidentionUnit are highly correlated with TotalUnit.
+
+* TaxClassPresent is highly correlated with TaxClassSale.
+
+  I'm going to remove these features because they bring the same information without any added value.
+  These features will be removed in validation dataset as well to keep the consistence.
+```{r, echo=FALSE}
+# Drop YearSale (Highly uncorrelated with MonthYear)
+NYCProperties <- NYCProperties[,-c("YearSale")]
+# Drop BuildingClassCategoryPresent, BuildingClassSale, BuildingClassCategory (Highly correlated with TotalUnit)
+NYCProperties <- NYCProperties[,-c("BuildingClassCategoryPresent", "BuildingClassSale", 
+                                   "BuildingClassCategory","ResidentionUnit")]
+# Drop TaxClassPresent (Highly correlated with TaxClassSale)
+NYCProperties <- NYCProperties[,-c("TaxClassPresent")]
+```
+
+  After remove these features there are not correlatives features.  You can see it clearly in the below plot.
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+Columms <- NYCProperties[,Borough:DaySale]
+Data <- cor(Columms, method = "spearman")
+corrplot(Data, tl.col = "black", order = "hclust", hclust.method = "average", addrect = 4, tl.cex = 0.7)
+```
+
+```{r, echo=FALSE}
+# Validation dataset
+# Drop YearSale (Highly uncorrelated with MonthYear)
+validation <- validation[,-c("YearSale")]
+# Drop BuildingClassCategoryPresent, BuildingClassSale, BuildingClassCategory (Highly correlated with TotalUnit)
+validation <- validation[,-c("BuildingClassCategoryPresent", "BuildingClassSale", "BuildingClassCategory","ResidentionUnit")]
+# Drop TaxClassPresent (Highly correlated with TaxClassSale)
+validation <- validation[,-c("TaxClassPresent")]
+```
+
+  Reviewing the dataset structure.
+```{r, echo=TRUE}
+str(NYCProperties, strict.width = "wrap")
+```
+
+  There is a lot of disparity between the values of each feature. To get a standard scale of measure I'm going to convert each value of features to a range between the max and min of each one.  It will influence the prediction accuracy.
+```{r, echo=FALSE}
+# Min-Max normalization function
+normalize <- function(x) {
+  (x-min(x))/(max(x)-min(x))
+}
+# Normalization NYCProperties
+
+NYCProperties$Borough <- normalize(NYCProperties$Borough)
+NYCProperties$Neighborhood <- normalize(NYCProperties$Neighborhood)
+NYCProperties$Block <- normalize(NYCProperties$Block)
+NYCProperties$Lot <- normalize(NYCProperties$Lot)
+NYCProperties$ZipCode <- normalize(NYCProperties$ZipCode)
+NYCProperties$CommercialUnit <- normalize(NYCProperties$CommercialUnit)
+NYCProperties$TotalUnit <- normalize(NYCProperties$TotalUnit)
+NYCProperties$LandFeet <- normalize(NYCProperties$LandFeet)
+NYCProperties$GrossFeet <- normalize(NYCProperties$GrossFeet)
+NYCProperties$YearBuilt <- normalize(NYCProperties$YearBuilt)
+NYCProperties$TaxClassSale <- normalize(NYCProperties$TaxClassSale)
+NYCProperties$MonthSale <- normalize(NYCProperties$MonthSale)
+NYCProperties$DaySale <- normalize(NYCProperties$DaySale)
+
+# Normalization Validation
+validation$Borough <- normalize(validation$Borough)
+validation$Neighborhood <- normalize(validation$Neighborhood)
+validation$Block <- normalize(validation$Block)
+validation$Lot <- normalize(validation$Lot)
+validation$ZipCode <- normalize(validation$ZipCode)
+validation$CommercialUnit <- normalize(validation$CommercialUnit)
+validation$TotalUnit <- normalize(validation$TotalUnit)
+validation$LandFeet <- normalize(validation$LandFeet)
+validation$GrossFeet <- normalize(validation$GrossFeet)
+validation$YearBuilt <- normalize(validation$YearBuilt)
+validation$TaxClassSale <- normalize(validation$TaxClassSale)
+validation$MonthSale <- normalize(validation$MonthSale)
+validation$DaySale <- normalize(validation$DaySale)
+
+```
+
+  Now we can see a standard scale of measures.
+```{r, echo=TRUE}
+summary(NYCProperties, strict.width = "wrap")
+```
+
+```{r, echo=TRUE}
+summary(validation, strict.width = "wrap")
+```
+
+  Some algorithms that I'm going to use,such as KNN classifies objects by finding similarities between them using distance functions. These algorithms are receptive to the size of the variables. If we don’t scale, the feature with a higher magnitude will have more influence than the feature with a lower magnitude, and this leads to bias in data, and it also affects the accuracy.  For more detail see the References section "Data Normalization".
+
+# Predicting the Sale Price of a NYC Property.
+
+  The dataset that I chose will be evaluated according to the RMSE metric.
+
+  The RMSE() function available in the package in R is used to calculate the root mean square error between actual values and predicted values.
+
+  The lower values of RMSE indicate a better fit.  RMSE is a good measure of how accurately the model predicts the response, and it is the most important criteria to fit the main purpose of the model is prediction.
+
+  The first step is to split my dataset for training and test.  This split will use to measure the performance of the models.
+
+  The Validation dataset will be just used for prediction with the best performance model.  To follow the same criteria, like validation, the test will be 10 % of the data.
+
+  Once the training and test data sets are split, I'm going to start with Linear Regression. LR will be my baseline approach.  After that, I'm going to work with Support Vector Regression.  Then, I'm going to implement KNN to have a different model.
+Finally, I'm going to work with Decision Tree models, Decision Tree, Random Forest and, Gradient Boosting Machines at the end.  Showing a different option as well.
+
+  I choose four different kinds of models because I would like to expand my research with ensembling modeling.   The ensemble method combines multiple models allowing to produce better predictions compared to a single model.
+
+  I'll set up a seed in each model to be sure everyone can reproduce the same RMSEs and, I'll show the RMSE values in a table to make easier the comparison between them.
+
+## Create train and test sets from NYCProperties dataset.
+```{r, echo=FALSE}
+set.seed(1, sample.kind="Rounding") 
+test_index <- createDataPartition(y = NYCProperties$SalePrice, times = 1, p = 0.1, 
+                                  list = FALSE)  
+train_NYCProperties <- NYCProperties[-test_index,]
+test_NYCProperties <- NYCProperties[test_index,]
+
+## Delete objects from the memory
+rm(NYCProperties, test_index)
+```
+
+### Train Dataset (train_NYCProperties)
+```{r, echo=TRUE}
+str(train_NYCProperties, strict.width = "wrap")
+```
+
+### Test Dataset (test_NYCProperties)
+```{r, echo=TRUE}
+str(test_NYCProperties, strict.width = "wrap")
+```
+
+## Data Preparation
+```{r, echo=TRUE}
+y_train <- train_NYCProperties$SalePrice
+x_train <- train_NYCProperties[,!("SalePrice")]
+
+y_test <- test_NYCProperties$SalePrice
+x_test <- test_NYCProperties[,!("SalePrice")]
+
+y_val <- validation$SalePrice
+x_val <- validation[,!("SalePrice")]
+```
+
+During the implementation of each model you will see:
+
+  * A table with a **train row** showing the result of the model using the **training data** and, a **test row** showing the result of the model using **unseen data**.  
+  This table shows us how well the model is generalizing and how it potentially will behave with future information.
+
+  * A plot showing us the **difference** between using the training data and the model using unseen data (sale price prediction).
+  The y-axis shows us this difference in *sale price* applying in each model.
+
+# Model #1 - Linear Regression - Baseline Approach
+  The first model is the baseline approach.
+```{r, echo=TRUE}
+set.seed(1, sample.kind = "Rounding")
+
+lr.fit <- lm(
+  formula = SalePrice ~., 
+  data = train_NYCProperties)
+
+lr.yhat_train <- lr.fit %>% predict(as.data.frame(x_train))
+lr.yhat_test <- lr.fit %>% predict(as.data.frame(x_test))
+
+lr.train_rmse <- RMSE(lr.yhat_train, y_train)
+lr.test_rmse <- RMSE(lr.yhat_test, y_test)
+```
+
+```{r table1, echo=FALSE}
+tmp_table <- data_frame(Method = "Linear Regression - Train", RMSE = lr.train_rmse)
+tmp_table <- rbind(tmp_table, data_frame(Method = "Linear Regression - Test", RMSE = lr.test_rmse))
+tmp_table %>% knitr::kable(caption = "RMSEs")
+
+rmse_table <- data_frame(Method = "Linear Regression - Test", RMSE = lr.test_rmse)
+```  
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+ggplot() +
+  geom_line(aes(x=1:length(y_test), y=(10^y_test) - (10^lr.yhat_test)), color="pink") +
+  labs(title = "Linear Regression",
+       x = "Index",
+       y = "y_tes - yhat_test")+
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, 
+                                   vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```        
+
+# Model #2 - Support Vector Regression
+  This is the second model applying Support Vector Regression with default values.
+```{r, echo=TRUE}
+library(e1071)
+set.seed(1, sample.kind = "Rounding")
+
+svr.fit <- svm(
+  formula = SalePrice ~ ., 
+  data=train_NYCProperties) 
+
+svr.yhat_train <- svr.fit %>% predict(as.data.frame(x_train))
+svr.yhat_test <- svr.fit %>% predict(as.data.frame(x_test))
+
+svr.train_rmse <- RMSE(svr.yhat_train, y_train)
+svr.test_rmse <- RMSE(svr.yhat_test, y_test)
+```
+
+```{r table2, echo=FALSE}
+tmp_table <- data_frame(Method = "Support Vector Regression - Train", RMSE = svr.train_rmse)
+tmp_table <- rbind(tmp_table, data_frame(Method = "Support Vector Regression - Test", RMSE = svr.test_rmse))
+tmp_table %>% knitr::kable(caption = "RMSEs")
+
+rmse_table <- rbind(rmse_table, data_frame(Method = "Support Vector Regression - Test", RMSE = svr.test_rmse))
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+ggplot() +
+  geom_line(aes(x=1:length(y_test), y=(10^y_test) - (10^svr.yhat_test)), color="red") +
+  labs(title = "Support Vector Regression",
+       x = "Index",
+       y = "y_tes - yhat_test")+
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, 
+                                   vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+
+# Model #3 -  KNN
+  This is the third model applying k-nearest Neighbors algorithm.  In this case I've be working tuning the model, looking for the better K (number of neighbors).
+```{r, echo=TRUE}
+set.seed(1, sample.kind = "Rounding")
+knn.fit <- train(
+  form = SalePrice ~ .,
+  method = "knn", 
+  data = train_NYCProperties,
+  tuneGrid = data.frame(#k = seq(15, 35, 2)
+                        k = 15)) #bestTune
+knn.fit$bestTune
+
+knn.yhat_train <- knn.fit %>% predict(as.data.frame(x_train))
+knn.yhat_test <- knn.fit %>% predict(as.data.frame(x_test))
+
+knn.train_rmse <- RMSE(knn.yhat_train, y_train)
+knn.test_rmse <- RMSE(knn.yhat_test, y_test)
+```
+
+```{r table3, echo=FALSE}
+tmp_table <- data_frame(Method = "KNN - Train", RMSE = knn.train_rmse)
+tmp_table <- rbind(tmp_table, data_frame(Method = "KNN - Test", RMSE = knn.test_rmse))
+tmp_table %>% knitr::kable(caption = "RMSEs")
+
+rmse_table <- rbind(rmse_table, data_frame(Method = "KNN - Test", RMSE = knn.test_rmse))
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+ggplot() +
+  geom_line(aes(x=1:length(y_test), y=(10^y_test) - (10^knn.yhat_test)), color="dark green") +
+  labs(title = "KNN",
+       x = "Index",
+       y = "y_tes - yhat_test")+
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, 
+                                   vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+
+# Model #4 -  Regression Trees
+  This is the fourth model applying Regression Trees algorithm.  In this models just apply method= "anova" for a regression tree.
+```{r, echo=TRUE}
+library(rpart)
+set.seed(1, sample.kind = "Rounding")
+
+rt.fit <- rpart(
+  formula = SalePrice ~ ., 
+  method="anova", 
+  data=train_NYCProperties)
+
+rt.yhat_train <- rt.fit %>% predict(as.data.frame(x_train))
+rt.yhat_test <- rt.fit %>% predict(as.data.frame(x_test))
+
+rt.train_rmse <- RMSE(rt.yhat_train, y_train)
+rt.test_rmse <- RMSE(rt.yhat_test, y_test)
+```
+
+```{r table4, echo=FALSE}
+tmp_table <- data_frame(Method = "Regression Trees - Train", RMSE = rt.train_rmse)
+tmp_table <- rbind(tmp_table, data_frame(Method = "Regression Trees - Test", RMSE = rt.test_rmse))
+tmp_table %>% knitr::kable(caption = "RMSEs")
+
+rmse_table <- rbind(rmse_table, data_frame(Method = "Regression Trees - Test", RMSE = rt.test_rmse))
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+ggplot() +
+  geom_line(aes(x=1:length(y_test), y=(10^y_test) - (10^rt.yhat_test)), color="orange")+
+  labs(title = "Regression Trees",
+       x = "Index",
+       y = "y_tes - yhat_test") +
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, 
+                                   vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+
+# Model #5 - Random Forest
+  This is the fifth model applying Random Forest algorithm.  This model has been evaluated with default values.  It showed difference between train-RMSE VS test-RMSE, which means overfitting .  
+  Overfitting is characteristic of RF models.  To avoid it, I added the parameter nodesize = 50 (min.obs.in a terminal node).  This parameter is by default 5. 
+```{r, echo=TRUE}
+library(randomForest)
+set.seed(1, sample.kind = "Rounding")
+
+rf.fit <- randomForest(
+  formula = SalePrice ~ ., 
+  data = train_NYCProperties, 
+  nodesize = 50             # min. #observations in a terminal node
+  )
+
+rf.yhat_train <- rf.fit %>% predict(as.data.frame(x_train))
+rf.yhat_test <- rf.fit %>% predict(as.data.frame(x_test))
+
+rf.train_rmse <- RMSE(rf.yhat_train, y_train)
+rf.test_rmse <- RMSE(rf.yhat_test, y_test)
+```
+
+```{r table5, echo=FALSE}
+tmp_table <- data_frame(Method = "Random Forest - Train", RMSE = rf.train_rmse)
+tmp_table <- rbind(tmp_table, data_frame(Method = "Random Forest - Test ", RMSE = rf.test_rmse))
+tmp_table %>% knitr::kable(caption = "RMSEs")
+
+rmse_table <- rbind(rmse_table, data_frame(Method = "Random Forest - Test", RMSE = rf.test_rmse))
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+ggplot() +
+  geom_line(aes(x=1:length(y_test), y=(10^y_test) - (10^rf.yhat_test)), color="brown") +
+  labs(title = "Random Forest",
+       x = "Index",
+       y = "y_tes - yhat_test") +
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, 
+                                   vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+
+# Model #6 - Gradient Boosting Machines
+  This is the sixth model applying Gradient Boosting Machines Forest algorithm.  In this model, I've been working on tuning some parameters. Below are the best tune values for this dataset.
+  
+```{r, echo=TRUE}
+library(gbm)
+set.seed(1, sample.kind = "Rounding")
+
+gbm.grid <- expand.grid(#interaction.depth = seq(12, 30, 2), # max_depth
+                        interaction.depth = 30,             #bestTune
+                        n.trees = 1000,                     # nround / # of Iterations
+                        shrinkage = 0.01,                   # ETA / Learning Rate (Default Value)
+                        n.minobsinnode = 10)                # Default Value
+
+gbm.ctrl <- trainControl(method="cv",                       # Cross Validation
+                         number = 5,
+                         verboseIter = FALSE)             
+
+gbm.fit <- train(
+  form = SalePrice ~ .,
+  method = "gbm", 
+  data = train_NYCProperties,
+  tuneGrid = gbm.grid,
+  trControl = gbm.ctrl,
+  verbose = FALSE)
+
+gbm.fit$bestTune
+
+gbm.yhat_train <- gbm.fit %>% predict(as.data.frame(x_train))
+gbm.yhat_test <- gbm.fit %>% predict(as.data.frame(x_test))
+
+gbm.train_rmse <- RMSE(gbm.yhat_train, y_train)
+gbm.test_rmse <- RMSE(gbm.yhat_test, y_test)
+```
+
+```{r table6, echo=FALSE}
+tmp_table <- data_frame(Method = "Gradient Boosting Machines - Train", RMSE = gbm.train_rmse)
+tmp_table <- rbind(tmp_table, data_frame(Method = "Gradient Boosting Machines - Test ", RMSE = gbm.test_rmse))
+tmp_table %>% knitr::kable(caption = "RMSEs")
+
+rmse_table <- rbind(rmse_table, data_frame(Method = "Gradient Boosting Machines - Test", RMSE = gbm.test_rmse))
+```
+
+```{r, echo=FALSE, results="hide", fig.width = 5.5, fig.height = 4, fig.align = "center"}
+ggplot() +
+  geom_line(aes(x=1:length(y_test), y=(10^y_test) - (10^gbm.yhat_test)), color="blue") +
+  labs(title = "Gradient Boosting Machines",
+       x = "Index",
+       y = "y_tes - yhat_test")+
+  theme_bw() +
+  theme(axis.text.x = element_text(colour = "grey20", size = 8, angle = 90, hjust = 0.5, 
+                                   vjust = 0.5),
+        axis.text.y = element_text(colour = "grey20", size = 8),
+        strip.text = element_text(face = "italic"),
+        text = element_text(size = 10))
+```
+# Summary: RMSEs in Test dataset
+```{r table7, echo=FALSE}
+rmse_table %>% knitr::kable(caption = "Final RMSE")
+```
+
+# The best RMSE running in Validation Dataset.
+  The model that shows us the best predictions in the sale price of a property in NYC is *Gradient Boosting*.  Now we are going to implement this model in the validation data set.
+```{r, echo=TRUE}
+best.yhat <- gbm.fit %>% predict(validation)
+best.val_rmse = RMSE(best.yhat, y_val)
+```
+
+```{r table8, echo=FALSE}
+rmse_table <- rbind(rmse_table, data_frame(Method = "Gradient Boosting Machines - Validation", RMSE = best.val_rmse))
+rmse_table %>% knitr::kable(caption = "Final RMSE")
+```
+\pagebreak
+# Conclusion
+  After the dataset has been cleaning and normalize to get consistent data for the goal of my project. I have been working with different models (Linear Regression, Neighbors, Vector Regression and, Decision Tree algorithms) to predict the sale price of a property in NYC. 
+  Some models worked better than others.  With some of those I have been implemented tuning strategies to get a better RMSE and with other models just left them as the default setup.
+  To see the performance in each model I used the training dataset comparing with the test dataset.  The difference between them has been plotted for a better understanding.
+  Finally, I took the model that better fit (smaller RMSE) predicting the sale price in the validation partition with unseen information.
+  I am satisfied with the results I obtained, analysis of the dataset, and the implemented models. 
+  This project will be the starting point to continue with the study of the ensemble models to obtain a much better prediction to apply in my real estate business.
+
+## Potential Impact
+  This project can help the real estate investor to have an idea about a property sale price according to the market.
+
+## Limitations
+  The limitation of this project is the size of the dataset. This limitation can bring the model to not have a very accurate prediction.  The model's result may be improved by gathering more updated information.
+
+## Future work
+  As a future work with this project, we can make a deeper study of ensemble models that can lead to improving the prediction and robustness of the sale price of the properties.
+Ensemble methods are meta-algorithms that combine several machine learning models into one predictive model.
+
+\pagebreak
+# References
+
+* Data set
+  + <https://www.kaggle.com/annavictoria/ml-friendly-public-datasets?utm_medium=email&utm_source=intercom&utm_campaign=data+projects+onboarding>
+  + <https://www.kaggle.com/new-york-city/nyc-property-sales> 
+  + <https://www1.nyc.gov/assets/finance/downloads/pdf/07pdf/glossary_rsf071607.pdf> (Features Definitions)
+  + <https://www1.nyc.gov/assets/finance/jump/hlpbldgcode.html>  (Building Classification)
+  + <https://www.unitedstateszipcodes.org/>  (NYC Zip Codes)
+
+* General Information
+  + <https://rafalab.github.io/dsbook/index.html> 
+
+* General Information in R
+  + <https://cran.r-project.org/>
+  + <https://stackoverflow.com/>
+  + <https://jkzorz.github.io/2019/06/11/Correlation-heatmaps.html>
+
+* Data Normalization
+  + <https://medium.com/swlh/data-normalisation-with-r-6ef1d1947970>
+  
+* Decision Tree - Random Forest
+  + <https://towardsdatascience.com/understanding-random-forest-58381e0602d2> 
+  + <https://cran.r-project.org/web/packages/randomForest/randomForest.pdf> 
+  
+  
+  
+
+
+
